@@ -1,11 +1,11 @@
-// import express from "express";
-// const router = express.Router();
+import express from "express";
+const router = express.Router();
 
-// // ✅ FIXED (use import, NOT require)
-// import { createToken, redeemToken } from "../controller/tokenController.js";
+// ✅ FIXED (use import, NOT require)
+import { createToken, redeemToken } from "../controller/tokenController.js";
 
-// // routes
-// router.post("/create", createToken);
-// router.post("/redeem", redeemToken);
+// routes
+router.post("/create", createToken);
+router.post("/redeem", redeemToken);
 
-// export default router;
+export default router;
