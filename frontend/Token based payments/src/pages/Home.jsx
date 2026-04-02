@@ -1,170 +1,180 @@
-import react from "react"
-import {useNavigate} from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { fetchTokens } from "../lib/tokenApi";
+
+function QuickAction({ label, icon, onClick, sublabel }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center gap-1 text-center"
+    >
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8f7ff] text-xs font-bold text-[#00baf2]">
+        {icon}
+      </div>
+      <p className="text-[11px] text-slate-700">{label}</p>
+      {sublabel ? <p className="text-[9px] text-slate-400">{sublabel}</p> : null}
+    </button>
+  );
+}
 
 export default function Home() {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
+  const [wallet, setWallet] = useState({
+    initialBalance: 1000,
+    availableBalance: 0,
+    lockedAmount: 0
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadWallet() {
+      try {
+        const data = await fetchTokens();
+        if (active) {
+          setWallet(data.wallet);
+        }
+      } catch {
+        if (active) {
+          setWallet({
+            initialBalance: 1000,
+            availableBalance: 0,
+            lockedAmount: 0
+          });
+        }
+      }
+    }
+
+    loadWallet();
+    const intervalId = setInterval(loadWallet, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, []);
+
   return (
-    <div className="flex justify-center bg-gray-300 min-h-screen py-6">
-
-      {/* 📱 PHONE */}
-      <div className="w-[390px] bg-[#f5f7fb] rounded-[35px] overflow-hidden shadow-xl relative">
-
-        {/* 🔵 HEADER */}
-        <div className="bg-[#00baf2] px-4 py-3 flex justify-between items-center text-white">
-          <div className="flex items-center gap-2">
-            <div className="bg-yellow-400 w-8 h-8 rounded-full flex items-center justify-center font-bold">
-              SS
+    <div className="flex min-h-screen justify-center bg-gray-300 py-6">
+      <div className="relative w-[390px] overflow-hidden rounded-[35px] bg-[#f5f7fb] shadow-xl">
+        <div className="bg-[#00baf2] px-4 py-3 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow-400 font-bold text-slate-900">
+                SS
+              </div>
+              <div>
+                <p className="text-sm font-bold leading-none">paytm</p>
+                <p className="text-[10px] opacity-90">UPI</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold leading-none">paytm</p>
-              <p className="text-[10px] opacity-90">UPI</p>
+            <div className="flex gap-2">
+              <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold">
+                Search
+              </div>
+              <div className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold">
+                Chat
+              </div>
             </div>
-          </div>
-          <div className="flex gap-4 text-lg">
-            🔍 💬
           </div>
         </div>
 
-        {/* ⚡ BANNER */}
         <div className="p-3">
-          <div className="bg-white rounded-xl p-3 flex justify-between items-center shadow-sm">
+          <div className="flex items-center justify-between rounded-xl bg-white p-3 shadow-sm">
             <div>
               <p className="text-sm font-semibold leading-tight">
-                Lightning fast payments always
+                Wallet loaded for token demo
               </p>
-              <button className="mt-2 bg-[#00baf2] text-white text-xs px-3 py-1 rounded">
+              <button className="mt-2 rounded bg-[#00baf2] px-3 py-1 text-xs text-white">
                 Pay using Wallet
               </button>
             </div>
-            <div className="text-[#00baf2] text-center font-bold">
-              <p className="text-xs">in</p>
-              <p className="text-xl">2</p>
-              <p className="text-xs">seconds</p>
+            <div className="text-center font-bold text-[#00baf2]">
+              <p className="text-xs">Wallet total</p>
+              <p className="text-xl">Rs. {wallet.initialBalance}</p>
+              <p className="text-[10px]">demo balance</p>
             </div>
           </div>
         </div>
 
-        {/* 💸 UPI SECTION */}
         <div className="px-3">
-          <div className="bg-white rounded-xl p-3 shadow-sm">
-            <h2 className="text-sm font-semibold mb-3">
-              UPI Money Transfer
-            </h2>
+          <div className="rounded-xl bg-white p-3 shadow-sm">
+            <h2 className="mb-3 text-sm font-semibold">UPI Money Transfer</h2>
 
-            <div className="grid grid-cols-5 text-center text-[11px] gap-3">
+            <div className="grid grid-cols-5 gap-3 text-center text-[11px]">
+              <QuickAction label="Scan & Pay" icon="SP" />
+              <QuickAction label="To Mobile" icon="MB" />
+              <QuickAction label="To UPI Apps" icon="UPI" />
+              <QuickAction
+                label="Token"
+                icon="TK"
+                onClick={() => navigate("/token")}
+              />
+              <QuickAction label="To Bank" icon="BNK" />
+            </div>
 
-  <div className="flex flex-col items-center gap-1">
-    <div className="text-xl">📷</div>
-    <p>Scan & Pay</p>
-  </div>
-
-  <div className="flex flex-col items-center gap-1">
-    <div className="text-xl">👤</div>
-    <p>To Mobile</p>
-  </div>
-
-  <div className="flex flex-col items-center gap-1">
-    <div className="text-xl">📱</div>
-    <p>To UPI Apps</p>
-  </div>
-
-  {/* 🔥 NEW TOKEN OPTION */}
-  <div className="flex flex-col items-center gap-1" onClick={() => navigate("/token")}>
-    <div className="text-xl">🪙</div>
-    <p>Token</p>
-  </div>
-
-  <div className="flex flex-col items-center gap-1">
-    <div className="text-xl">🏦</div>
-    <p>To Bank</p>
-  </div>
-
-</div>
-
-            {/* SMALL OPTIONS */}
-            <div className="flex justify-between mt-4 text-[10px]">
-              <span className="bg-gray-100 px-2 py-1 rounded">
+            <div className="mt-4 flex justify-between text-[10px]">
+              <span className="rounded bg-gray-100 px-2 py-1">
                 Balance & History
               </span>
-              <span className="bg-gray-100 px-2 py-1 rounded">
+              <span className="rounded bg-gray-100 px-2 py-1">
                 To Self Account
               </span>
-              <span className="bg-gray-100 px-2 py-1 rounded">
+              <span className="rounded bg-gray-100 px-2 py-1">
                 Receive Money
               </span>
             </div>
           </div>
         </div>
 
-        {/* 🧾 MY PAYTM */}
-        <div className="px-3 mt-3">
-          <div className="bg-white rounded-xl p-3 shadow-sm">
-            <div className="flex justify-between items-center mb-3">
+        <div className="mt-3 px-3">
+          <div className="rounded-xl bg-white p-3 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold">My Paytm</h2>
-              <span className="text-[10px] text-yellow-600 font-semibold">
-                Activate UPI Lite
+              <span className="text-[10px] font-semibold text-yellow-600">
+                Locked Rs. {wallet.lockedAmount}
               </span>
             </div>
 
-            <div className="grid grid-cols-4 text-center text-[11px] gap-3">
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">💰</div>
-                <p>Wallet</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">📄</div>
-                <p>Postpaid</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">👥</div>
-                <p>Refer & Earn</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">💳</div>
-                <p>Loan</p>
-              </div>
+            <div className="grid grid-cols-4 gap-3 text-center text-[11px]">
+              <QuickAction
+                label="Wallet"
+                icon="WL"
+                sublabel={`Rs. ${wallet.initialBalance}`}
+              />
+              <QuickAction
+                label="Available"
+                icon="AV"
+                sublabel={`Rs. ${wallet.availableBalance}`}
+              />
+              <QuickAction label="Samples" icon="SM" sublabel="3 tokens" />
+              <QuickAction label="History" icon="HS" sublabel="Seeded" />
             </div>
           </div>
         </div>
 
-        {/* 📱 RECHARGE */}
-        <div className="px-3 mt-3 pb-20">
-          <div className="bg-white rounded-xl p-3 shadow-sm">
-            <div className="flex justify-between mb-3">
-              <h2 className="text-sm font-semibold">
-                Recharge & Bill Payments
-              </h2>
+        <div className="mt-3 px-3 pb-20">
+          <div className="rounded-xl bg-white p-3 shadow-sm">
+            <div className="mb-3 flex justify-between">
+              <h2 className="text-sm font-semibold">Recharge & Bill Payments</h2>
               <span className="text-[10px] text-blue-500">My Bills</span>
             </div>
 
-            <div className="grid grid-cols-4 text-center text-[11px] gap-3">
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">📱</div>
-                <p>Mobile</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">⚡</div>
-                <p>Electricity</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">💧</div>
-                <p>Water</p>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="text-xl">📺</div>
-                <p>DTH</p>
-              </div>
+            <div className="grid grid-cols-4 gap-3 text-center text-[11px]">
+              <QuickAction label="Mobile" icon="MO" />
+              <QuickAction label="Electricity" icon="EL" />
+              <QuickAction label="Water" icon="WT" />
+              <QuickAction label="DTH" icon="DTH" />
             </div>
           </div>
         </div>
 
-        {/* 🔘 SCAN BAR (BOTTOM) */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-          <button className="bg-[#002970] text-white px-6 py-3 rounded-full shadow-lg text-sm font-semibold">
+          <button className="rounded-full bg-[#002970] px-6 py-3 text-sm font-semibold text-white shadow-lg">
             Scan Any QR
           </button>
         </div>
-
       </div>
     </div>
   );

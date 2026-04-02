@@ -1,10 +1,15 @@
 import express from "express";
+import {
+  createToken,
+  getToken,
+  listTokens,
+  redeemToken
+} from "../controller/tokenController.js";
+
 const router = express.Router();
 
-// ✅ FIXED (use import, NOT require)
-import { createToken, redeemToken } from "../controller/tokenController.js";
-
-// routes
+router.get("/", listTokens);
+router.get("/:tokenId", getToken);
 router.post("/create", createToken);
 router.post("/redeem", redeemToken);
 
