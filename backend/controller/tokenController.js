@@ -1,8 +1,14 @@
 import bcrypt from "bcrypt";
+import crypto from "crypto";
+import mongoose from "mongoose";
 import Token from "../model/Token.js";
 
 const INITIAL_WALLET_BALANCE = 1000;
 const VALIDITY_MAP = {
+  "1d": 1,
+  "7d": 7,
+  "30d": 30,
+  "365d": 365,
   day: 1,
   week: 7,
   month: 30,
@@ -19,10 +25,17 @@ function getExpiryDate(validity) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
-const normalizeToken = (token) => {
-  const now = new Date();
-  const isExpired = token.expiresAt && new Date(token.expiresAt) < now;
+function getResolvedStatus(token) {
+  const isExpired = token.expiresAt && new Date(token.expiresAt) < new Date();
 
+  if (isExpired && token.status !== "redeemed") {
+    return "expired";
+  }
+
+  return token.status;
+}
+
+function normalizeToken(token) {
   return {
     id: token._id,
     user: token.user,
@@ -33,12 +46,20 @@ const normalizeToken = (token) => {
     expiresAt: token.expiresAt,
     createdAt: token.createdAt,
     updatedAt: token.updatedAt,
-    status: isExpired && token.status === "active" ? "expired" : token.status,
+    status: getResolvedStatus(token),
     transactions: token.transactions,
     failedAttempts: token.failedAttempts,
     isLocked: token.isLocked
   };
-};
+}
+
+function buildQrPayload(tokenId, amount, expiresAt) {
+  return JSON.stringify({
+    tokenId,
+    amount,
+    expiresAt
+  });
+}
 
 const sampleTokenSeed = [
   {
@@ -87,21 +108,98 @@ const sampleTokenSeed = [
   }
 ];
 
+let inMemoryTokens = [];
+
+function isDatabaseAvailable() {
+  return mongoose.connection.readyState === 1;
+}
+
+function cloneToken(token) {
+  return {
+    ...token,
+    transactions: token.transactions.map((transaction) => ({ ...transaction }))
+  };
+}
+
+function createMemoryToken(data) {
+  const now = new Date();
+  const tokenId = data.tokenId || crypto.randomBytes(8).toString("hex").toUpperCase();
+  const remainingAmount =
+    typeof data.remainingAmount === "number" ? data.remainingAmount : data.totalAmount;
+
+  return {
+    _id: data._id || crypto.randomUUID(),
+    user: data.user || "Demo User",
+    totalAmount: data.totalAmount,
+    remainingAmount,
+    tokenPin: data.tokenPin,
+    tokenId,
+    qrPayload: data.qrPayload || buildQrPayload(tokenId, remainingAmount, data.expiresAt),
+    expiresAt: data.expiresAt,
+    createdAt: data.createdAt || now,
+    updatedAt: data.updatedAt || now,
+    status: data.status || "active",
+    transactions: (data.transactions || []).map((transaction) => ({
+      merchantId: transaction.merchantId,
+      amount: transaction.amount,
+      timestamp: transaction.timestamp || now
+    })),
+    failedAttempts: data.failedAttempts || 0,
+    isLocked: data.isLocked || false
+  };
+}
+
+async function getAllTokens() {
+  if (isDatabaseAvailable()) {
+    return Token.find().sort({ createdAt: -1 });
+  }
+
+  return [...inMemoryTokens].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+async function findTokenByTokenId(tokenId) {
+  if (isDatabaseAvailable()) {
+    return Token.findOne({ tokenId });
+  }
+
+  return inMemoryTokens.find((token) => token.tokenId === tokenId) || null;
+}
+
+async function createStoredToken(data) {
+  if (isDatabaseAvailable()) {
+    return Token.create(data);
+  }
+
+  const token = createMemoryToken(data);
+  inMemoryTokens.push(token);
+  return token;
+}
+
+async function saveStoredToken(token) {
+  if (isDatabaseAvailable()) {
+    return token.save();
+  }
+
+  token.updatedAt = new Date();
+  token.qrPayload = buildQrPayload(token.tokenId, token.remainingAmount, token.expiresAt);
+  return token;
+}
+
 async function buildWalletSummary() {
-  const tokens = await Token.find().sort({ createdAt: -1 });
+  const tokens = await getAllTokens();
   const normalizedTokens = tokens.map(normalizeToken);
 
   const lockedAmount = normalizedTokens
     .filter((token) => token.status === "active" || token.status === "partially_used")
     .reduce((sum, token) => sum + Number(token.remainingAmount || 0), 0);
 
-  const availableBalance = Math.max(INITIAL_WALLET_BALANCE - lockedAmount, 0);
-
   return {
     tokens: normalizedTokens,
     wallet: {
       initialBalance: INITIAL_WALLET_BALANCE,
-      availableBalance,
+      availableBalance: Math.max(INITIAL_WALLET_BALANCE - lockedAmount, 0),
       lockedAmount
     }
   };
@@ -111,35 +209,25 @@ export async function ensureSampleTokens() {
   const hashedPin = await bcrypt.hash("1234", 10);
 
   for (const item of sampleTokenSeed) {
-    const existingToken = await Token.findOne({ tokenId: item.tokenId });
+    const existingToken = await findTokenByTokenId(item.tokenId);
 
     if (existingToken) {
       continue;
     }
 
-    await Token.create({
+    await createStoredToken({
       ...item,
       tokenPin: hashedPin,
-      qrPayload: JSON.stringify({
-        tokenId: item.tokenId,
-        amount: item.totalAmount,
-        expiresAt: item.expiresAt
-      })
+      qrPayload: buildQrPayload(item.tokenId, item.remainingAmount, item.expiresAt)
     });
   }
 }
 
-<<<<<<< HEAD
 export const createToken = async (req, res) => {
   try {
-    const {
-      user = "Demo User",
-      amount,
-      pin,
-      validity = "day"
-    } = req.body;
+    const { user = "Demo User", amount, pin, validity = "1d" } = req.body;
     const parsedAmount = Number(amount);
-    const expiryDate = getExpiryDate(validity);
+    const expiresAt = getExpiryDate(validity);
 
     if (!parsedAmount || parsedAmount <= 0) {
       return res.status(400).json({ message: "Amount must be greater than 0" });
@@ -149,7 +237,7 @@ export const createToken = async (req, res) => {
       return res.status(400).json({ message: "PIN must be at least 4 digits" });
     }
 
-    if (!expiryDate) {
+    if (!expiresAt) {
       return res.status(400).json({ message: "Select a valid token validity" });
     }
 
@@ -162,112 +250,50 @@ export const createToken = async (req, res) => {
     }
 
     const hashedPin = await bcrypt.hash(String(pin), 10);
-=======
-// 💰 Fake wallet (for hackathon)
-let DEMO_BALANCE = 1000;
-
-// ⏳ Helper for validity
-const getExpiryTime = (validity) => {
-  const now = Date.now();
-
-  switch (validity) {
-    case "1d":
-      return new Date(now + 1 * 24 * 60 * 60 * 1000);
-    case "7d":
-      return new Date(now + 7 * 24 * 60 * 60 * 1000);
-    case "30d":
-      return new Date(now + 30 * 24 * 60 * 60 * 1000);
-    case "365d":
-      return new Date(now + 365 * 24 * 60 * 60 * 1000);
-    default:
-      return new Date(now + 15 * 60 * 1000); // fallback
-  }
-};
-
-// ✅ CREATE TOKEN
-export const createToken = async (req, res) => {
-  try {
-    console.log("BODY:", req.body); // 🔥 ADD THIS
-
-    const { amount, pin, validity } = req.body;
-
-    if (!amount || !pin) {
-      return res.status(400).json({
-        success: false,
-        message: "Amount and PIN required",
-      });
-    }
-
-    if (DEMO_BALANCE < amount) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient balance",
-      });
-    }
-
-    DEMO_BALANCE -= amount;
-
-    const hashedPin = await bcrypt.hash(pin, 10);
->>>>>>> 3d2fb74c8ea29d40ce66683d479116fb5d3c3b90
-
-    const expiresAt = getExpiryTime(validity);
-
-    const token = new Token({
-<<<<<<< HEAD
+    const token = await createStoredToken({
       user,
       totalAmount: parsedAmount,
+      remainingAmount: parsedAmount,
       tokenPin: hashedPin,
-      expiresAt: expiryDate
-=======
-      totalAmount: amount,
-      remainingAmount: amount,
-      tokenPin: hashedPin,
-      expiresAt,
->>>>>>> 3d2fb74c8ea29d40ce66683d479116fb5d3c3b90
+      expiresAt
     });
 
-    await token.save();
+    token.qrPayload = buildQrPayload(token.tokenId, token.remainingAmount, token.expiresAt);
+    await saveStoredToken(token);
 
     const updatedSummary = await buildWalletSummary();
     const createdToken = updatedSummary.tokens.find(
       (item) => item.tokenId === token.tokenId
     );
 
-    res.status(201).json({
-<<<<<<< HEAD
+    return res.status(201).json({
+      success: true,
       message: "Token created",
       token: createdToken,
       wallet: updatedSummary.wallet
-=======
-      success: true,
-      token,
->>>>>>> 3d2fb74c8ea29d40ce66683d479116fb5d3c3b90
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
 export const listTokens = async (req, res) => {
   try {
     const summary = await buildWalletSummary();
-    res.json(summary);
+    return res.json(summary);
   } catch (err) {
-    console.error("ERROR:", err); // 🔥 ADD THIS
-    res.status(500).json({
-      success: false,
-      message: err.message,
+    return res.status(500).json({
+      message: err.message
     });
   }
 };
 
 export const redeemToken = async (req, res) => {
-<<<<<<< HEAD
   try {
-    const { tokenId, amount, pin } = req.body;
+    const { tokenId, amount, pin, merchantId = "demo" } = req.body;
     const parsedAmount = Number(amount);
 
-    const token = await Token.findOne({ tokenId });
+    const token = await findTokenByTokenId(tokenId);
 
     if (!token) {
       return res.status(404).json({ message: "Token not found" });
@@ -275,7 +301,7 @@ export const redeemToken = async (req, res) => {
 
     if (new Date() > token.expiresAt) {
       token.status = "expired";
-      await token.save();
+      await saveStoredToken(token);
       return res.status(400).json({ message: "Token expired" });
     }
 
@@ -290,7 +316,7 @@ export const redeemToken = async (req, res) => {
       if (token.failedAttempts >= 3) {
         token.isLocked = true;
       }
-      await token.save();
+      await saveStoredToken(token);
       return res.status(401).json({ message: "Invalid PIN" });
     }
 
@@ -303,49 +329,42 @@ export const redeemToken = async (req, res) => {
     }
 
     token.remainingAmount -= parsedAmount;
-    token.status =
-      token.remainingAmount === 0 ? "redeemed" : "partially_used";
-
+    token.failedAttempts = 0;
+    token.status = token.remainingAmount === 0 ? "redeemed" : "partially_used";
     token.transactions.push({
-      merchantId: "demo",
+      merchantId,
       amount: parsedAmount
     });
+    token.qrPayload = buildQrPayload(token.tokenId, token.remainingAmount, token.expiresAt);
 
-    await token.save();
+    await saveStoredToken(token);
 
     const updatedSummary = await buildWalletSummary();
 
-    res.json({
+    return res.json({
+      success: true,
       message: "Payment successful",
       token: normalizeToken(token),
       wallet: updatedSummary.wallet
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
 
 export const getToken = async (req, res) => {
   try {
     const { tokenId } = req.params;
-    const token = await Token.findOne({ tokenId });
+    const token = await findTokenByTokenId(tokenId);
 
     if (!token) {
-      return res.status(404).json({ message: "Not found" });
+      return res.status(404).json({ message: "Token not found" });
     }
 
-    res.json({
+    return res.json({
       token: normalizeToken(token)
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message });
   }
 };
-=======
-  res.json({ message: "Redeem working" });
-};
-
-export const getToken = async (req, res) => {
-  res.json({ message: "Get token working" });
-};
->>>>>>> 3d2fb74c8ea29d40ce66683d479116fb5d3c3b90

@@ -20,9 +20,11 @@ function QuickAction({ label, icon, onClick, sublabel }) {
 
 export default function Home() {
   const navigate = useNavigate();
+  const [tokenCount, setTokenCount] = useState(0);
+  const [historyCount, setHistoryCount] = useState(0);
   const [wallet, setWallet] = useState({
     initialBalance: 1000,
-    availableBalance: 0,
+    availableBalance: 1000,
     lockedAmount: 0
   });
 
@@ -34,14 +36,23 @@ export default function Home() {
         const data = await fetchTokens();
         if (active) {
           setWallet(data.wallet);
+          setTokenCount(data.tokens.length);
+          setHistoryCount(
+            data.tokens.reduce(
+              (sum, token) => sum + 1 + token.transactions.length,
+              0
+            )
+          );
         }
       } catch {
         if (active) {
           setWallet({
             initialBalance: 1000,
-            availableBalance: 0,
+            availableBalance: 1000,
             lockedAmount: 0
           });
+          setTokenCount(0);
+          setHistoryCount(0);
         }
       }
     }
@@ -104,8 +115,12 @@ export default function Home() {
 
             <div className="grid grid-cols-5 gap-3 text-center text-[11px]">
               <QuickAction label="Scan & Pay" icon="SP" />
+              <QuickAction
+                label="Merchant"
+                icon="MC"
+                onClick={() => navigate("/merchant")}
+              />
               <QuickAction label="To Mobile" icon="MB" />
-              <QuickAction label="To UPI Apps" icon="UPI" />
               <QuickAction
                 label="Token"
                 icon="TK"
@@ -148,8 +163,16 @@ export default function Home() {
                 icon="AV"
                 sublabel={`Rs. ${wallet.availableBalance}`}
               />
-              <QuickAction label="Samples" icon="SM" sublabel="3 tokens" />
-              <QuickAction label="History" icon="HS" sublabel="Seeded" />
+              <QuickAction
+                label="Samples"
+                icon="SM"
+                sublabel={`${tokenCount} tokens`}
+              />
+              <QuickAction
+                label="History"
+                icon="HS"
+                sublabel={`${historyCount} entries`}
+              />
             </div>
           </div>
         </div>

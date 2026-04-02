@@ -1,133 +1,201 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-const BASE_URL = "http://localhost:8000/api/token";
+import { createToken, fetchTokens } from "../lib/tokenApi";
+
+const validityOptions = [
+  { label: "1 Day", value: "1d" },
+  { label: "7 Days", value: "7d" },
+  { label: "30 Days", value: "30d" },
+  { label: "365 Days", value: "365d" }
+];
+
+const defaultWallet = {
+  initialBalance: 1000,
+  availableBalance: 1000,
+  lockedAmount: 0
+};
 
 export default function CreateToken() {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
   const [amount, setAmount] = useState("");
   const [pin, setPin] = useState("");
   const [validity, setValidity] = useState("1d");
-  const [tokenData, setTokenData] = useState(null);
-  const [loading, setLoading] = useState(false); // ✅ FIX
+  const [wallet, setWallet] = useState(defaultWallet);
+  const [tokenCount, setTokenCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [loadingWallet, setLoadingWallet] = useState(true);
+  const [error, setError] = useState("");
 
- const handleCreate = async () => {
-  try {
-    setLoading(true);
+  useEffect(() => {
+    let active = true;
 
-    const res = await fetch(`${BASE_URL}/create`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount: Number(amount),
-        pin,
-        validity,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (data.success) {
-      navigate("/success", {
-        state: { token: data.token },
-      });
-    } else {
-      navigate("/failure", {
-        state: { message: data.message },
-      });
-
+    async function loadWallet() {
+      try {
+        const data = await fetchTokens();
+        if (active) {
+          setWallet(data.wallet);
+          setTokenCount(data.tokens.length);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message);
+        }
+      } finally {
+        if (active) {
+          setLoadingWallet(false);
+        }
+      }
     }
 
-  } catch (err) {
-    navigate("/failure", {
-      state: { message: "Server error" },
-    });
-  } finally {
-    setLoading(false);
+    loadWallet();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const parsedAmount = Number(amount) || 0;
+  const remainingAfterCreate = useMemo(
+    () => Math.max(wallet.availableBalance - parsedAmount, 0),
+    [parsedAmount, wallet.availableBalance]
+  );
+
+  async function handleCreate() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const data = await createToken({
+        amount: parsedAmount,
+        pin,
+        validity
+      });
+
+      navigate("/success", {
+        state: {
+          token: data.token,
+          wallet: data.wallet
+        }
+      });
+    } catch (err) {
+      navigate("/failure", {
+        state: { message: err.message || "Server error" }
+      });
+    } finally {
+      setLoading(false);
+    }
   }
-};
 
   return (
-    <div className="flex justify-center bg-gray-300 min-h-screen py-6">
+    <div className="flex min-h-screen justify-center bg-gray-300 py-6">
+      <div className="w-[390px] overflow-hidden rounded-[35px] bg-[#f5f7fb] shadow-xl">
+        <div className="bg-[#00baf2] p-4 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold">Create Token</h1>
+              <p className="text-xs opacity-80">Secure prepaid payments</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/token")}
+              className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold"
+            >
+              Back
+            </button>
+          </div>
 
-      {/* 📱 PHONE FRAME */}
-      <div className="w-[390px] bg-[#f5f7fb] rounded-[35px] shadow-xl overflow-hidden">
+          <div className="mt-4 rounded-2xl bg-white/20 p-4 backdrop-blur-sm">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] opacity-90">Wallet available now</p>
+                <p className="mt-1 text-2xl font-bold">Rs. {wallet.availableBalance}</p>
+              </div>
+              <div className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-[#00baf2]">
+                {tokenCount} Tokens
+              </div>
+            </div>
 
-        {/* 🔵 HEADER */}
-        <div className="bg-[#00baf2] text-white p-4">
-          <h1 className="text-lg font-semibold">Create Token</h1>
-          <p className="text-xs opacity-80">
-            Secure prepaid payments
-          </p>
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-white/15 py-2">
+                <p className="text-[10px] opacity-80">Wallet</p>
+                <p className="mt-1 text-sm font-semibold">Rs. {wallet.initialBalance}</p>
+              </div>
+              <div className="rounded-xl bg-white/15 py-2">
+                <p className="text-[10px] opacity-80">Locked</p>
+                <p className="mt-1 text-sm font-semibold">Rs. {wallet.lockedAmount}</p>
+              </div>
+              <div className="rounded-xl bg-white/15 py-2">
+                <p className="text-[10px] opacity-80">After create</p>
+                <p className="mt-1 text-sm font-semibold">Rs. {remainingAfterCreate}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* 🧾 CONTENT */}
         <div className="p-4">
-
-          {/* FORM CARD */}
-          <div className="bg-white rounded-xl shadow p-4">
-
-            {/* 💰 Amount */}
-            <p className="text-sm text-gray-500 mb-1">Amount</p>
+          <div className="rounded-xl bg-white p-4 shadow">
+            <p className="mb-1 text-sm text-gray-500">Amount</p>
             <input
               type="number"
-              placeholder="₹ Enter amount"
-              className="w-full p-3 border rounded-lg mb-4 outline-none"
+              min="1"
+              placeholder="Rs. Enter amount"
+              className="mb-4 w-full rounded-lg border p-3 outline-none"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(event) => setAmount(event.target.value)}
             />
 
-            {/* 🔐 PIN */}
-            <p className="text-sm text-gray-500 mb-1">Set PIN</p>
+            <p className="mb-1 text-sm text-gray-500">Set PIN</p>
             <input
               type="password"
+              inputMode="numeric"
+              maxLength={4}
               placeholder="Enter 4-digit PIN"
-              className="w-full p-3 border rounded-lg mb-4 outline-none"
+              className="mb-4 w-full rounded-lg border p-3 outline-none"
               value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              onChange={(event) => setPin(event.target.value)}
             />
 
-            {/* ⏳ VALIDITY */}
-            <p className="text-sm text-gray-500 mb-2">
-              Select Validity
-            </p>
-
+            <p className="mb-2 text-sm text-gray-500">Select Validity</p>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "1 Day", value: "1d" },
-                { label: "7 Days", value: "7d" },
-                { label: "30 Days", value: "30d" },
-                { label: "365 Days", value: "365d" },
-              ].map((v) => (
+              {validityOptions.map((option) => (
                 <button
-                  key={v.value}
-                  onClick={() => setValidity(v.value)}
-                  className={`p-3 rounded-lg text-sm border transition ${
-                    validity === v.value
-                      ? "bg-[#00baf2] text-white"
-                      : "bg-white"
+                  key={option.value}
+                  type="button"
+                  onClick={() => setValidity(option.value)}
+                  className={`rounded-lg border p-3 text-sm transition ${
+                    validity === option.value ? "bg-[#00baf2] text-white" : "bg-white"
                   }`}
                 >
-                  {v.label}
+                  {option.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 🔘 BUTTON */}
+          <div className="mt-4 rounded-xl bg-white p-4 shadow">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">Seeded token history</span>
+              <span className="font-semibold text-[#002970]">{tokenCount} total tokens</span>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              Demo tokens and payment history are already loaded, and every new token
+              updates this same wallet balance across the app.
+            </p>
+            {loadingWallet ? (
+              <p className="mt-3 text-xs text-slate-400">Loading wallet summary...</p>
+            ) : error ? (
+              <p className="mt-3 text-xs text-rose-600">{error}</p>
+            ) : null}
+          </div>
+
           <button
+            type="button"
             onClick={handleCreate}
             disabled={loading}
-            className="w-full bg-[#002970] text-white py-3 rounded-full mt-5 shadow"
+            className="mt-5 w-full rounded-full bg-[#002970] py-3 text-white shadow"
           >
             {loading ? "Processing..." : "Generate Token"}
           </button>
-
-          {/* 🎉 RESULT */}
-          
-          
-
         </div>
       </div>
     </div>

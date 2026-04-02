@@ -10,6 +10,12 @@ const shortcutFactory = (tokenCount) => [
     action: "/create"
   },
   {
+    title: "Merchant Pay",
+    subtitle: "Scan token QR, enter amount, and collect PIN",
+    badge: "Live",
+    action: "/merchant"
+  },
+  {
     title: "Token History",
     subtitle: "See only tokens that were actually created",
     badge: `${tokenCount} Tokens`,
@@ -31,6 +37,11 @@ const shortcutFactory = (tokenCount) => [
 export default function TokenDashboard() {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState([]);
+  const [wallet, setWallet] = useState({
+    initialBalance: 1000,
+    availableBalance: 1000,
+    lockedAmount: 0
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -43,6 +54,7 @@ export default function TokenDashboard() {
         const data = await fetchTokens();
         if (active) {
           setTokens(data.tokens);
+          setWallet(data.wallet);
         }
       } catch (err) {
         if (active) {
@@ -122,14 +134,25 @@ export default function TokenDashboard() {
 
             <div className="mt-4 grid grid-cols-3 gap-2 text-center">
               <div className="rounded-xl bg-white/15 py-2">
-                <p className="text-[10px] opacity-80">Created</p>
-                <p className="mt-1 text-sm font-semibold">{tokens.length}</p>
+                <p className="text-[10px] opacity-80">Wallet Free</p>
+                <p className="mt-1 text-sm font-semibold">Rs. {wallet.availableBalance}</p>
               </div>
               <div className="rounded-xl bg-white/15 py-2">
                 <p className="text-[10px] opacity-80">Spent</p>
                 <p className="mt-1 text-sm font-semibold">Rs. {summary.totalSpent}</p>
               </div>
               <div className="rounded-xl bg-white/15 py-2">
+                <p className="text-[10px] opacity-80">Locked</p>
+                <p className="mt-1 text-sm font-semibold">Rs. {wallet.lockedAmount}</p>
+              </div>
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-xl bg-white/10 py-2">
+                <p className="text-[10px] opacity-80">Created</p>
+                <p className="mt-1 text-sm font-semibold">{tokens.length}</p>
+              </div>
+              <div className="rounded-xl bg-white/10 py-2">
                 <p className="text-[10px] opacity-80">Expired</p>
                 <p className="mt-1 text-sm font-semibold">{summary.expiredCount}</p>
               </div>
